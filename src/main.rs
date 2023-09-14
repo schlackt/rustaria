@@ -1,5 +1,5 @@
 use std::{
-    io::{prelude::*, BufReader},
+    io::{prelude::*},
     net::{TcpListener, TcpStream},
 };
 
@@ -16,19 +16,23 @@ fn main() {
 fn handle_connection(mut stream: TcpStream) {
     println!("Read message");
 
-    let mut buffer = [0u8; 15];
-    stream.read_exact(&mut buffer).unwrap();
+    let mut header_buffer = [0u8; 3];
+    stream.read_exact(&mut header_buffer).unwrap();
 
     println!("Processing messages");
 
-    let length = buffer[0] as u16 | ((buffer[1] as u16) << 8);
-    let message_type = buffer[2];
+    let length = header_buffer[0] as u16 | ((header_buffer[1] as u16) << 8);
+    let message_type = header_buffer[2];
+
+    let payload_length = (length - 3) as usize;
+    let mut payload_buffer = vec![0; payload_length];
+    let bytes_read = stream.read(payload_buffer.as_mut_slice()).unwrap();
+
+    dbg!(bytes_read);
 
     println!("--- message received ---");
     dbg!(length);
     dbg!(message_type);
 
-    println!("{}", String::from_utf8(buffer[3..].to_vec()).unwrap());
-
-    println!("Request: {:#?}", buffer);
+    println!("{}", String::from_utf8(payload_buffer).unwrap());
 }
