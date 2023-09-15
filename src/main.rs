@@ -1,9 +1,10 @@
 use std::{
-    io::{prelude::*},
+    io::{Cursor, prelude::*},
     net::{TcpListener, TcpStream},
 };
 use std::fmt::{Debug, Formatter};
 use num_enum::TryFromPrimitive;
+use byteorder::{LittleEndian, ReadBytesExt};
 
 fn main() {
     let listener = TcpListener::bind("127.0.0.1:7777").unwrap();
@@ -19,7 +20,7 @@ fn handle_connection(mut stream: TcpStream) {
     let message = read_next_message(&mut stream);
     println!("{:?}", message);
 
-    stream.write(&[2u8,0,3u8,0]);
+    stream.write_all(&[2u8, 0, 3u8, 0]).unwrap();
 
     let message = read_next_message(&mut stream);
     println!("{:?}", message);
@@ -29,33 +30,42 @@ fn handle_connection(mut stream: TcpStream) {
 }
 
 fn read_next_message(stream: &mut TcpStream) -> TerrariaMessage {
-    println!("Received message.");
-
     let mut header_buffer = [0u8; 2];
     stream.read_exact(&mut header_buffer).unwrap();
 
-    let length = header_buffer[0] as u16 | ((header_buffer[1] as u16) << 8);
+    let length = Cursor::new(header_buffer).read_u16::<LittleEndian>().unwrap();
     let payload_length = (length - 2) as usize;
     let mut payload_buffer = vec![0; payload_length];
-    let bytes_read = stream.read(payload_buffer.as_mut_slice()).unwrap();
+    stream.read_exact(payload_buffer.as_mut_slice()).unwrap();
     let message_type = payload_buffer[0];
-    println!("Bytes read: {}", bytes_read);
 
-    TerrariaMessage { kind: TerrariaMessageKind::try_from(message_type).expect("Invalid message type."),  payload: payload_buffer[1..].to_vec()}
+    TerrariaMessage {
+        kind: TerrariaMessageKind::try_from(message_type).expect("Invalid message type."),
+        payload: payload_buffer[1..].to_vec(),
+        length: length as usize,
+    }
 }
 
 struct TerrariaMessage {
     kind: TerrariaMessageKind,
-    payload: Vec<u8>
+    payload: Vec<u8>,
+    length: usize,
 }
 
 impl Debug for TerrariaMessage {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        if let Ok(string) = String::from_utf8(self.payload.clone()) {
-            f.write_fmt(format_args!("kind = {:?}, payload = {}", self.kind, string.trim()))
-        } else {
-            f.write_fmt(format_args!("kind = {:?}, payload = {:?}", self.kind, self.payload))
-        }
+        let payload_display = match String::from_utf8(self.payload.clone()) {
+            Ok(string) => format!("{:?}", string.trim()),
+            Err(_) => format!("{:?}", self.payload),
+        };
+
+        write!(
+            f,
+            "kind = {:?}, length = {}, payload = {}",
+            self.kind,
+            self.length,
+            payload_display
+        )
     }
 }
 
@@ -64,5 +74,5 @@ impl Debug for TerrariaMessage {
 enum TerrariaMessageKind {
     ConnectRequest = 1u8,
     PlayerInfo = 4u8,
-    ClientUUID = 68u8
+    ClientUUID = 68u8,
 }
