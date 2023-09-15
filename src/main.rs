@@ -3,6 +3,7 @@ use std::{
     net::{TcpListener, TcpStream},
 };
 use std::fmt::{Debug, Formatter};
+use num_enum::TryFromPrimitive;
 
 fn main() {
     let listener = TcpListener::bind("127.0.0.1:7777").unwrap();
@@ -28,20 +29,19 @@ fn handle_connection(mut stream: TcpStream) {
 }
 
 fn read_next_message(stream: &mut TcpStream) -> TerrariaMessage {
-    println!("Read message");
+    println!("Received message.");
 
     let mut header_buffer = [0u8; 2];
     stream.read_exact(&mut header_buffer).unwrap();
-
-    println!("Processing messages");
 
     let length = header_buffer[0] as u16 | ((header_buffer[1] as u16) << 8);
     let payload_length = (length - 2) as usize;
     let mut payload_buffer = vec![0; payload_length];
     let bytes_read = stream.read(payload_buffer.as_mut_slice()).unwrap();
     let message_type = payload_buffer[0];
+    println!("Bytes read: {}", bytes_read);
 
-    TerrariaMessage { kind: TerrariaMessageKind::from_u8(message_type),  payload: payload_buffer[1..].to_vec()}
+    TerrariaMessage { kind: TerrariaMessageKind::try_from(message_type).expect("Invalid message type."),  payload: payload_buffer[1..].to_vec()}
 }
 
 struct TerrariaMessage {
@@ -59,21 +59,10 @@ impl Debug for TerrariaMessage {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, TryFromPrimitive, PartialEq)]
 #[repr(u8)]
 enum TerrariaMessageKind {
     ConnectRequest = 1u8,
     PlayerInfo = 4u8,
     ClientUUID = 68u8
-}
-
-impl TerrariaMessageKind {
-    fn from_u8(value: u8) -> Self {
-        match value {
-            1u8 => Self::ConnectRequest,
-            4u8 => Self::PlayerInfo,
-            68u8 => Self::ClientUUID,
-            _ => panic!("Invalid message type {}", value)
-        }
-    }
 }
